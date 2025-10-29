@@ -1,35 +1,36 @@
-import { Tabs } from 'expo-router';
-import React from 'react';
+import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
+import IndexScreen from './index';
+import AboutScreen from './about';
 
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+const Tab = createMaterialTopTabNavigator();
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
   return (
-    <Tabs
+    <Tab.Navigator
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        headerShown: false,
-        tabBarButton: HapticTab,
-      }}>
-      <Tabs.Screen
+        tabBarActiveTintColor: '#003da5',
+        tabBarInactiveTintColor: '#fff',
+        tabBarStyle: { backgroundColor: '#25292e' },
+        tabBarIndicatorStyle: { backgroundColor: '#003da5' },
+        tabBarLabelStyle: { fontSize: 16, fontWeight: 'bold' },
+      }}
+    >
+      <Tab.Screen
         name="index"
+        component={IndexScreen}
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          title: 'NWS',
         }}
       />
-      <Tabs.Screen
-        name="explore"
+      <Tab.Screen
+        name="about"
+        component={AboutScreen}
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: 'ATMS',
         }}
       />
-    </Tabs>
+    </Tab.Navigator>
   );
 }
+
+
