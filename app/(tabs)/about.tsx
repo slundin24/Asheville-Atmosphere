@@ -1,13 +1,27 @@
-import { Text } from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 import LayoutWrapper from './LayoutWrapper';
-import { Link } from 'expo-router';
 
 export default function AboutScreen() {
   return (
     <LayoutWrapper>
-      <Text style={{ color: '#fff', fontSize: 20, marginBottom: 20 }}>ATMS Screen Content</Text>
+      <View style={styles.container}>
+        <Text style={styles.text}>ATMS Content Coming Soon</Text>
+      </View>
     </LayoutWrapper>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  text: {
+    color: '#888',
+    fontSize: 16,
+  },
+});
 
 
