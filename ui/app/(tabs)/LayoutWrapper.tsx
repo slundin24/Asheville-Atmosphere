@@ -8,52 +8,30 @@ import {
   ActivityIndicator 
 } from 'react-native';
 
-interface WeatherAlert {
-  event: string;
-  headline: string;
-  severity: string;
-  onset: string;
-  ends: string;
+interface Comment {
+  id: number;
+  commenter: string;
+  text: string;
+  comment_type: string;
+  timestamp: Date;
 }
 
 export default function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const { width, height } = useWindowDimensions();
   const isWebLarge = width >= 768;
 
-  const [alerts, setAlerts] = useState<WeatherAlert[]>([]);
+  const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchAlerts = async () => {
+    const fetchComments = async () => {
       try {
-        const response = await fetch(
-          'https://api.weather.gov/alerts/active?area=NC',
-          {
-            headers: {
-              'User-Agent': 'MyWeatherApp (slundin@unca.edu)',
-              'Accept': 'application/ld+json',
-            },
-          }
-        );
+        const response = await fetch('http://localhost:8001/comments');
 
         if (response.ok) {
           const data = await response.json();
-          const features = data?.features || [];
-
-          const buncombeAlerts = features
-            .filter((feature: any) => {
-              const areaDesc = feature?.properties?.areaDesc || '';
-              return areaDesc.includes('Buncombe');
-            })
-            .map((feature: any) => ({
-              event: feature.properties.event,
-              headline: feature.properties.headline,
-              severity: feature.properties.severity,
-              onset: feature.properties.onset,
-              ends: feature.properties.ends,
-            }));
-
-          setAlerts(buncombeAlerts);
+         console.log(data)
+          setComments(data);
         }
       } catch (err) {
         console.error('Error fetching alerts:', err);
@@ -62,38 +40,37 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
       }
     };
 
-    fetchAlerts();
-    const interval = setInterval(fetchAlerts, 5 * 60 * 1000);
-    return () => clearInterval(interval);
+    fetchComments();
+    
   }, []);
 
-  const getSeverityColor = (severity: string) => {
-    switch (severity?.toLowerCase()) {
-      case 'extreme':
-        return '#d32f2f';
-      case 'severe':
-        return '#f57c00';
-      case 'moderate':
-        return '#ffa726';
-      case 'minor':
-        return '#ffb300';
-      default:
-        return '#666';
-    }
-  };
+  // const getSeverityColor = (severity: string) => {
+  //   switch (severity?.toLowerCase()) {
+  //     case 'extreme':
+  //       return '#d32f2f';
+  //     case 'severe':
+  //       return '#f57c00';
+  //     case 'moderate':
+  //       return '#ffa726';
+  //     case 'minor':
+  //       return '#ffb300';
+  //     default:
+  //       return '#666';
+  //   }
+  // };
 
-  const getSeverityEmoji = (event: string) => {
-    const lower = event?.toLowerCase() || '';
-    if (lower.includes('tornado')) return '🌪️';
-    if (lower.includes('thunder') || lower.includes('severe')) return '⛈️';
-    if (lower.includes('flood')) return '🌊';
-    if (lower.includes('wind')) return '💨';
-    if (lower.includes('winter') || lower.includes('snow')) return '❄️';
-    if (lower.includes('heat')) return '🌡️';
-    if (lower.includes('freeze') || lower.includes('frost')) return '🧊';
-    if (lower.includes('fog')) return '🌫️';
-    return '⚠️';
-  };
+  // const getSeverityEmoji = (event: string) => {
+  //   const lower = event?.toLowerCase() || '';
+  //   if (lower.includes('tornado')) return '🌪️';
+  //   if (lower.includes('thunder') || lower.includes('severe')) return '⛈️';
+  //   if (lower.includes('flood')) return '🌊';
+  //   if (lower.includes('wind')) return '💨';
+  //   if (lower.includes('winter') || lower.includes('snow')) return '❄️';
+  //   if (lower.includes('heat')) return '🌡️';
+  //   if (lower.includes('freeze') || lower.includes('frost')) return '🧊';
+  //   if (lower.includes('fog')) return '🌫️';
+  //   return '⚠️';
+  // };
 
   const formatAlertTime = (dateString: string) => {
     if (!dateString) return '';
@@ -125,28 +102,25 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
         ]}
         contentContainerStyle={{ paddingBottom: 20 }}
       >
-        <Text style={styles.bulletinTitle}>📋 Bulletin (Special)</Text>
+        <Text style={styles.bulletinTitle}>📋 Bulletin Board</Text>
 
         {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="small" color="#003da5" />
             <Text style={styles.loadingText}>Loading alerts...</Text>
           </View>
-        ) : alerts.length > 0 ? (
+        ) : comments.length > 0 ? (
           <>
-            {alerts.map((alert, index) => (
+            {comments.map((comment, index) => (
               <View
                 key={index}
-                style={[
-                  styles.alertCard,
-                  { borderLeftColor: getSeverityColor(alert.severity) },
-                ]}
+                style={ styles.alertCard}
               >
-                <Text style={styles.alertEmoji}>{getSeverityEmoji(alert.event)}</Text>
-                <Text style={styles.alertEvent}>{alert.event}</Text>
-                <Text style={styles.alertHeadline}>{alert.headline}</Text>
+              
+                <Text style={styles.alertEvent}>{comment.commenter}</Text>
+                <Text style={styles.alertHeadline}>{comment.text}</Text>
                 <Text style={styles.alertTime}>
-                  Until: {formatAlertTime(alert.ends)}
+                  Until: {comment.timestamp.toString()}
                 </Text>
               </View>
             ))}

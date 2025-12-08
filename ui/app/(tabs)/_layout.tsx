@@ -5,6 +5,7 @@ import { Platform, StyleSheet } from 'react-native';
 
 import IndexScreen from './index';
 import AboutScreen from './about';
+import LoginScreen from '../(auth)/login';
 
 const Tab = createMaterialTopTabNavigator();
 
@@ -35,6 +36,14 @@ export default function TabLayout() {
           component={AboutScreen}
           options={{
             title: 'ATMS',
+          }}
+        />
+
+        <Tab.Screen
+          name="Login"
+          component={LoginScreen}
+          options={{
+            title: 'Log in',
           }}
         />
       </Tab.Navigator>
