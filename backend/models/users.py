@@ -12,4 +12,5 @@ class User(Base):
     password = Column(String)
     first_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)
-    role = Column(String)
+    role = Column(String, default="user", nullable=False)
+

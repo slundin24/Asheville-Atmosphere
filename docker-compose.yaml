@@ -19,8 +19,8 @@ services:
       test: ["CMD-SHELL", "pg_isready -U postgres -d atms_db"]
       interval: 2s
       timeout: 3s
-      retries: 10
-      start_period: 10s
+      retries: 15
+      start_period: 15s
 
   # FastAPI Backend Service
   backend:
@@ -30,6 +30,9 @@ services:
     container_name: atms_backend
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://postgres:postgres@db:5432/atms_db}
+      # Added 2/19 #
+      JWT_SECRET: ${JWT_SECRET}
+
     ports:
       - "8001:8000"
     depends_on:

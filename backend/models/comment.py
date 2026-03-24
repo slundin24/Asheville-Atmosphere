@@ -4,7 +4,7 @@ from enum import Enum as PyEnum
 
 from .base import Base
 
-class CommentType(PyEnum):
+class CommentType(PyEnum): # ended up not using, could develop later
     GENERAL = "GENERAL"
     QUESTION = "QUESTION"
     FEEDBACK = "FEEDBACK"

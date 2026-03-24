@@ -6,23 +6,22 @@ import {
   StyleSheet,
   ActivityIndicator,
   ScrollView,
-  useWindowDimensions,
 } from 'react-native';
 import LayoutWrapper from './LayoutWrapper';
 
+// Daily forecast peroid from NWS API
 interface ForecastPeriod {
-  name: string;
+  name: string; 
   temperature: number;
   temperatureUnit: string;
   shortForecast: string;
   icon: string;
   startTime: string;
   detailedForecast: string;
-  probabilityOfPrecipitation?: {
-    value: number | null;
-  };
+  isDaytime: boolean;
 }
 
+// Hourly forecast structure
 interface HourlyForecast {
   startTime: string;
   temperature: number;
@@ -32,85 +31,95 @@ interface HourlyForecast {
   shortForecast: string;
 }
 
+// Main screen
 export default function IndexScreen() {
+
+  // Today's forecast (top card)
   const [todayForecast, setTodayForecast] = useState<ForecastPeriod | null>(null);
+
+  // 5-day forecast (10 periods day/night)
   const [weekForecast, setWeekForecast] = useState<ForecastPeriod[]>([]);
+
+  // Hourly forecast data
   const [hourlyForecast, setHourlyForecast] = useState<HourlyForecast[]>([]);
+
+  // Current observed weather (not forecast)
+  const [currentWeather, setCurrentWeather] = useState<any>(null);
+
+  // UI states
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { width } = useWindowDimensions();
-  const isWebLarge = width >= 768;
 
+  // Data fetching
   useEffect(() => {
     const fetchAllForecasts = async () => {
       try {
-        setError(null);
         setLoading(true);
+        setError(null);
 
-        // Fetch regular forecast (for today and 5-day)
-        const forecastResponse = await fetch(
-          'https://api.weather.gov/gridpoints/GSP/49,72/forecast',
-          {
-            headers: {
-              'User-Agent': 'MyWeatherApp (slundin@unca.edu)',
-              'Accept': 'application/geo+json',
-            },
-          }
+        const headers = {
+          'User-Agent': 'MyWeatherApp (slundin@unca.edu)',
+          'Accept': 'application/geo+json',
+        };
+
+        // lat and lon for Asheville, NC
+        const lat = 35.5959111;
+        const lon = -82.5500442;
+
+        const pointRes = await fetch(
+          // NWS API endpoint with lat and lon for Asheville, NC
+          `https://api.weather.gov/points/${lat},${lon}`,
+          { headers }
         );
+        const pointData = await pointRes.json();
 
-        if (!forecastResponse.ok) {
-          throw new Error(`Forecast API error: ${forecastResponse.status}`);
-        }
+        // API endpoints
+        const forecastUrl = pointData.properties.forecast;
+        const hourlyUrl = pointData.properties.forecastHourly;
+        const stationsUrl = pointData.properties.observationStations;
 
-        const forecastData = await forecastResponse.json();
-        console.log('Forecast data received:', JSON.stringify(forecastData, null, 2));
-        
-        // Try multiple paths to find periods
-        let periods: ForecastPeriod[] = [];
-        if (forecastData?.properties?.periods) {
-          periods = forecastData.properties.periods;
-        } else if (forecastData?.periods) {
-          periods = forecastData.periods;
-        }
+        // Daily forecast
+        const forecastRes = await fetch(forecastUrl, { headers });
+        const forecastData = await forecastRes.json();
 
-        console.log('Periods found:', periods.length);
+        // Day/night periods
+        const periods: ForecastPeriod[] = forecastData.properties.periods;
 
-        if (periods.length === 0) {
-          throw new Error('No forecast periods found in API response');
-        }
+        // First period (current day or night)
+        setTodayForecast(periods[0]);
 
-        // Set today's forecast (first daytime period)
-        const today = periods.find((p) => !p.name.toLowerCase().includes('night'));
-        setTodayForecast(today || periods[0]);
+        // First 10 periods (5 days of day and night pairs)
+        setWeekForecast(periods.slice(0, 10));
 
-        // Set 5-day forecast (next 5 daytime periods)
-        const daytimePeriods = periods.filter(
-          (p) => !p.name.toLowerCase().includes('night')
-        );
-        setWeekForecast(daytimePeriods.slice(0, 5));
+        // Hourly forecast
+        const hourlyRes = await fetch(hourlyUrl, { headers });
+        const hourlyData = await hourlyRes.json();
+        setHourlyForecast(hourlyData.properties.periods.slice(0, 12)); // limit to next 12 hours
 
-        // Fetch hourly forecast
-        const hourlyResponse = await fetch(
-          'https://api.weather.gov/gridpoints/GSP/49,72/forecast/hourly',
-          {
-            headers: {
-              'User-Agent': 'MyWeatherApp (slundin@unca.edu)',
-              'Accept': 'application/geo+json',
-            },
-          }
-        );
+        // Get nearest weather station
+        const stationsRes = await fetch(stationsUrl, { headers });
+        const stationsData = await stationsRes.json();
+        const stationUrl = stationsData.features[0].id;
 
-        if (hourlyResponse.ok) {
-          const hourlyData = await hourlyResponse.json();
-          console.log('Hourly data received');
-          const hourlyPeriods = hourlyData?.properties?.periods || [];
-          console.log('Hourly periods found:', hourlyPeriods.length);
-          setHourlyForecast(hourlyPeriods.slice(0, 12)); // Next 12 hours
-        } else {
-          console.log('Hourly forecast failed:', hourlyResponse.status);
-        }
+        // Get latest observation
+        const obsRes = await fetch(`${stationUrl}/observations/latest`, {
+          headers,
+        });
+        const obsData = await obsRes.json();
+        const current = obsData.properties;
+
+        // Convert celsius to fahrenheit
+        const tempC = current.temperature?.value;
+        const tempF = tempC !== null ? (tempC * 9) / 5 + 32 : null;
+
+        // forecast for today's weather box
+        setCurrentWeather({
+          temperature: tempF,
+          icon: current.icon,
+          text: current.textDescription,
+        });
+
       } catch (err: any) {
-        console.error('Error fetching forecast:', err);
         setError(err.message);
       } finally {
         setLoading(false);
@@ -120,30 +129,31 @@ export default function IndexScreen() {
     fetchAllForecasts();
   }, []);
 
+  // Format time
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleTimeString('en-US', { 
-      hour: 'numeric', 
-      hour12: true 
+    return date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      hour12: true,
     });
   };
 
-  const getWeatherEmoji = (forecast: string) => {
-    const lower = forecast.toLowerCase();
-    if (lower.includes('thunder')) return '⛈️';
-    if (lower.includes('rain') || lower.includes('shower')) return '🌧️';
-    if (lower.includes('snow')) return '❄️';
-    if (lower.includes('cloud')) return '☁️';
-    if (lower.includes('partly')) return '⛅';
-    if (lower.includes('clear') || lower.includes('sunny')) return '☀️';
-    return '🌤️';
-  };
-
+  // Detect severe/thunder conditions for the lightning icon
   const hasSevereWeather = (forecast: string) => {
     const lower = forecast.toLowerCase();
     return lower.includes('thunder') || lower.includes('severe');
   };
 
+  // Group day/night into pairs for the 5-day
+  const groupedForecast = [];
+  for (let i = 0; i < weekForecast.length; i += 2) {
+    groupedForecast.push({
+      day: weekForecast[i],
+      night: weekForecast[i + 1],
+    });
+  }
+
+  // Loading state
   if (loading) {
     return (
       <LayoutWrapper>
@@ -155,169 +165,140 @@ export default function IndexScreen() {
     );
   }
 
+  // Error state
   if (error) {
     return (
       <LayoutWrapper>
-        <ScrollView style={styles.content}>
-          <View style={styles.centerContainer}>
-            <Text style={styles.errorText}>⚠️ Error loading weather</Text>
-            <Text style={styles.errorDetail}>{error}</Text>
-            <Text style={styles.errorDetail}>
-              Check the console for detailed API response
-            </Text>
-          </View>
-        </ScrollView>
+        <View style={styles.centerContainer}>
+          <Text style={styles.errorText}>Error: {error}</Text>
+        </View>
       </LayoutWrapper>
     );
   }
 
+  // Main UI
   return (
     <LayoutWrapper>
       <ScrollView style={styles.fullScroll}>
         <View style={styles.container}>
-          {/* Header */}
+
+          {/* HEADER */}
           <View style={styles.header}>
-            <Text style={styles.title}>⛈️ The Asheville Atmosphere</Text>
+            <Text style={styles.title}>The Asheville Atmosphere</Text>
           </View>
 
           <View style={styles.content}>
-            {/* Today Section */}
-            {todayForecast && (
+
+            {/* TODAY */}
+            {todayForecast && currentWeather && (
               <View style={styles.todaySection}>
-                <Text style={styles.sectionTitle}>Today</Text>
+                <Text style={styles.sectionTitle}>
+                  {todayForecast.name}
+                </Text>
+
                 <View style={styles.todayContent}>
                   <Image
-                    source={{ uri: todayForecast.icon }}
+                    source={{ uri: currentWeather.icon }}
                     style={styles.todayIcon}
-                    resizeMode="contain"
                   />
+
                   <Text style={styles.todayTemp}>
-                    {todayForecast.temperature}°{todayForecast.temperatureUnit}
+                    {Math.round(currentWeather.temperature)}°
                   </Text>
+
                   <Text style={styles.todayForecast}>
+                    {currentWeather.text}
+                  </Text>
+
+                  <Text style={styles.todayName}>
                     {todayForecast.shortForecast}
                   </Text>
-                  <Text style={styles.todayName}>{todayForecast.name}</Text>
-                </View>
-                <View style={styles.waveDecoration}>
-                  <Text style={styles.waveText}>〰️〰️〰️〰️</Text>
                 </View>
               </View>
             )}
 
-            {/* Hourly Section */}
+            {/* HOURLY */}
             {hourlyForecast.length > 0 && (
               <View style={styles.hourlySection}>
                 <Text style={styles.sectionTitle}>Hourly</Text>
 
-                {/* Temperature Row */}
-                <View style={styles.hourlyRow}>
-                  <Text style={styles.hourlyLabel}>Temp</Text>
-                  <ScrollView 
-                    horizontal 
-                    showsHorizontalScrollIndicator={false}
-                    style={styles.hourlyScroll}
-                  >
-                    {hourlyForecast.map((hour, index) => (
-                      <View key={index} style={styles.hourlyItem}>
-                        <Text style={styles.hourlyValue}>{hour.temperature}°</Text>
-                      </View>
-                    ))}
-                  </ScrollView>
-                </View>
+                <View style={{ flexDirection: 'row' }}>
+                  <View style={{ marginRight: 10 }}>
+                    <Text style={styles.hourlyLabel}>Temp</Text>
+                    <Text style={styles.hourlyLabel}>Precip</Text>
+                    <Text style={styles.hourlyLabel}>Thunder</Text>
+                    <Text style={styles.hourlyLabel}></Text>
+                  </View>
 
-                {/* Precipitation Row */}
-                <View style={styles.hourlyRow}>
-                  <Text style={styles.hourlyLabel}>Precip</Text>
-                  <ScrollView 
-                    horizontal 
-                    showsHorizontalScrollIndicator={false}
-                    style={styles.hourlyScroll}
-                  >
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                     {hourlyForecast.map((hour, index) => {
-                      const precipValue = hour.probabilityOfPrecipitation?.value || 0;
+                      const precip = hour.probabilityOfPrecipitation?.value ?? 0;
+
                       return (
-                        <View key={index} style={styles.hourlyItem}>
+                        <View key={index} style={styles.hourlyColumn}>
+                          <Text style={styles.hourlyValue}>
+                            {hour.temperature}°
+                          </Text>
+
                           <View style={styles.precipBar}>
                             <View
                               style={[
                                 styles.precipFill,
-                                { height: `${precipValue}%` },
+                                { height: `${precip}%` },
                               ]}
                             />
                           </View>
-                          <Text style={styles.hourlyValueSmall}>{precipValue}%</Text>
+                          <Text style={styles.hourlyValueSmall}>{precip}%</Text>
+
+                          <Text style={styles.thunderIcon}>
+                            {hasSevereWeather(hour.shortForecast) ? '⚡' : '—'}
+                          </Text>
+
+                          <Text style={styles.timeLabel}>
+                            {formatTime(hour.startTime)}
+                          </Text>
                         </View>
                       );
                     })}
                   </ScrollView>
                 </View>
-
-                {/* Thunder Row */}
-                <View style={styles.hourlyRow}>
-                  <Text style={styles.hourlyLabel}>Thunder</Text>
-                  <ScrollView 
-                    horizontal 
-                    showsHorizontalScrollIndicator={false}
-                    style={styles.hourlyScroll}
-                  >
-                    {hourlyForecast.map((hour, index) => (
-                      <View key={index} style={styles.hourlyItem}>
-                        <Text style={styles.thunderIcon}>
-                          {hasSevereWeather(hour.shortForecast) ? '⚡' : '—'}
-                        </Text>
-                      </View>
-                    ))}
-                  </ScrollView>
-                </View>
-
-                {/* Time Labels */}
-                <View style={styles.hourlyRow}>
-                  <Text style={styles.hourlyLabel}></Text>
-                  <ScrollView 
-                    horizontal 
-                    showsHorizontalScrollIndicator={false}
-                    style={styles.hourlyScroll}
-                  >
-                    {hourlyForecast.map((hour, index) => (
-                      <View key={index} style={styles.hourlyItem}>
-                        <Text style={styles.timeLabel}>
-                          {formatTime(hour.startTime)}
-                        </Text>
-                      </View>
-                    ))}
-                  </ScrollView>
-                </View>
               </View>
             )}
 
-            {/* 5 Day Forecast */}
-            {weekForecast.length > 0 && (
-              <View style={styles.fiveDaySection}>
-                <Text style={styles.sectionTitle}>5 Day</Text>
-                <View style={styles.fiveDayGrid}>
-                  {weekForecast.map((day, index) => (
-                    <View key={index} style={styles.dayCard}>
-                      <Text style={styles.dayEmoji}>
-                        {getWeatherEmoji(day.shortForecast)}
-                      </Text>
-                      <Text style={styles.dayName}>{day.name.split(' ')[0]}</Text>
-                      <Text style={styles.dayTemp}>{day.temperature}°</Text>
-                      <Text style={styles.dayForecast} numberOfLines={2}>
-                        {day.shortForecast}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            )}
+            {/* 5 DAY */}
+            <View style={styles.fiveDaySection}>
+              <Text style={styles.sectionTitle}>5 Day</Text>
 
-            {/* Radar Section */}
-            <View style={styles.radarSection}>
-              <Text style={styles.sectionTitle}>Radar</Text>
-              <View style={styles.radarPlaceholder}>
-              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.fiveDayScroll}
+              >
+                {groupedForecast.slice(0, 5).map((pair, index) => (
+                  <View key={index} style={styles.dayCard}>
+
+                    <Text style={styles.dayName}>
+                      {pair.day?.name.split(' ')[0]}
+                    </Text>
+
+                    <Text style={styles.dayTemp}>
+                      ☀️ {pair.day?.temperature}°
+                    </Text>
+
+                    <Text style={styles.nightTemp}>
+                      🌙 {pair.night?.temperature}°
+                    </Text>
+
+                      {/* short forecast */}
+                    <Text style={styles.dayForecast} numberOfLines={2}>
+                      {pair.day?.shortForecast}
+                    </Text>
+
+                  </View>
+                ))}
+              </ScrollView>
             </View>
+
           </View>
         </View>
       </ScrollView>
@@ -326,227 +307,134 @@ export default function IndexScreen() {
 }
 
 const styles = StyleSheet.create({
-  fullScroll: {
-    flex: 1,
-  },
-  container: {
-    flex: 1,
-  },
+  fullScroll: { flex: 1 },
+  container: { flex: 1 },
+
   centerContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
   },
+
   header: {
     backgroundColor: '#1a1d23',
     padding: 15,
-    borderBottomWidth: 2,
-    borderBottomColor: '#003da5',
   },
+
   title: {
     fontSize: 24,
-    fontWeight: 'bold',
     color: '#fff',
+    fontWeight: 'bold',
   },
-  content: {
-    padding: 15,
-  },
+
+  content: { padding: 15 },
+
   todaySection: {
     backgroundColor: '#1a1d23',
     borderRadius: 12,
     padding: 20,
     marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#333',
   },
+
   sectionTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
     color: '#fff',
-    marginBottom: 15,
-  },
-  todayContent: {
-    alignItems: 'center',
-    paddingVertical: 15,
-  },
-  todayIcon: {
-    width: 120,
-    height: 120,
     marginBottom: 10,
   },
-  todayTemp: {
-    fontSize: 52,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 5,
-  },
-  todayForecast: {
-    fontSize: 18,
-    color: '#ccc',
-    marginBottom: 5,
-  },
-  todayName: {
-    fontSize: 16,
-    color: '#888',
-  },
-  waveDecoration: {
-    marginTop: 15,
-    alignItems: 'center',
-  },
-  waveText: {
-    fontSize: 24,
-    color: '#003da5',
-  },
+
+  todayContent: { alignItems: 'center' },
+
+  todayIcon: { width: 100, height: 100 },
+
+  todayTemp: { fontSize: 48, color: '#fff' },
+
+  todayForecast: { color: '#ccc' },
+
+  todayName: { color: '#888' },
+
   hourlySection: {
     backgroundColor: '#1a1d23',
-    borderRadius: 12,
     padding: 20,
+    borderRadius: 12,
     marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#333',
   },
-  hourlyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
+
   hourlyLabel: {
-    width: 70,
-    fontSize: 15,
-    fontWeight: '600',
+    height: 55,
     color: '#aaa',
   },
-  hourlyScroll: {
-    flex: 1,
-  },
-  hourlyItem: {
+
+  hourlyColumn: {
     width: 65,
     alignItems: 'center',
     marginRight: 10,
   },
-  hourlyValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  hourlyValueSmall: {
-    fontSize: 12,
-    color: '#aaa',
-    marginTop: 5,
-  },
+
+  hourlyValue: { color: '#fff', fontWeight: 'bold' },
+
+  hourlyValueSmall: { color: '#aaa', fontSize: 12 },
+
   precipBar: {
-    width: 30,
+    width: 25,
     height: 50,
-    backgroundColor: '#25292e',
-    borderRadius: 4,
+    backgroundColor: '#333',
     justifyContent: 'flex-end',
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#444',
+    marginVertical: 4,
   },
-  precipFill: {
-    width: '100%',
-    backgroundColor: '#003da5',
-  },
-  thunderIcon: {
-    fontSize: 24,
-  },
-  timeLabel: {
-    fontSize: 12,
-    color: '#888',
-  },
+
+  precipFill: { width: '100%', backgroundColor: '#003da5' },
+
+  thunderIcon: { fontSize: 18, marginVertical: 4 },
+
+  timeLabel: { color: '#888', fontSize: 12, marginTop: 4 },
+
   fiveDaySection: {
     backgroundColor: '#1a1d23',
-    borderRadius: 12,
     padding: 20,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#333',
+    borderRadius: 12,
   },
-  fiveDayGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    justifyContent: 'space-between',
+
+  fiveDayScroll: {
+    paddingRight: 10,
   },
+
   dayCard: {
-    flex: 1,
-    minWidth: 110,
     backgroundColor: '#25292e',
-    borderRadius: 8,
-    padding: 15,
+    padding: 12,
+    borderRadius: 10,
+    width: 120,
+    marginRight: 12,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#444',
   },
-  dayEmoji: {
-    fontSize: 40,
-    marginBottom: 8,
-  },
+
   dayName: {
-    fontSize: 15,
     color: '#aaa',
-    marginBottom: 5,
     fontWeight: '600',
+    marginBottom: 4,
   },
+
   dayTemp: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#fff',
-    marginBottom: 8,
-  },
-  dayForecast: {
-    fontSize: 12,
-    color: '#888',
-    textAlign: 'center',
-  },
-  radarSection: {
-    backgroundColor: '#1a1d23',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#333',
-  },
-  radarPlaceholder: {
-    backgroundColor: '#25292e',
-    borderRadius: 8,
-    padding: 40,
-    alignItems: 'center',
-    minHeight: 200,
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#444',
-  },
-  radarEmoji: {
-    fontSize: 48,
-    marginBottom: 10,
-  },
-  radarLabel: {
-    fontSize: 16,
-    color: '#fff',
-    fontWeight: '600',
-  },
-  radarSubtext: {
-    fontSize: 12,
-    color: '#888',
     marginTop: 5,
   },
-  loadingText: {
-    color: '#fff',
+
+  nightTemp: {
     fontSize: 16,
-    marginTop: 10,
-  },
-  errorText: {
-    color: '#ff6b6b',
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 10,
-  },
-  errorDetail: {
     color: '#ccc',
-    fontSize: 14,
+    marginBottom: 6,
+  },
+
+  dayForecast: {
+    color: '#888',
+    fontSize: 12,
     textAlign: 'center',
   },
+
+  loadingText: { color: '#fff' },
+
+  errorText: { color: 'red' },
 });
