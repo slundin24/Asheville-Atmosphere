@@ -1,22 +1,14 @@
-"""
-Simple FastAPI Starter - TODO API
-==================================
+# !!!!!!!!!!
+# Steps and text blurbs are from software engineering project 2. 
+# I used the same backend setup for the enpoints in my project. 
+# I kept the steps in there to help me stay orgnaized.
+# !!!!!!!!!!
 
-This is a minimal FastAPI example, designed for beginners.
-It shows the basic structure of a REST API with database access.
-
-HOW IT WORKS:
-1. Client (your React app) makes a request to a URL (e.g., /todos)
-2. FastAPI finds the function decorated with @app.get("/todos")
-3. That function uses the database connection to query data
-4. The function returns data, which FastAPI converts to JSON
-5. The JSON is sent back to the client
-"""
-
-# Step 1: Import what we need
+# Imports
 import os
 from datetime import datetime
 from typing import List, Optional
+from uuid import UUID
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Security, Response
@@ -27,10 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.future import select
 from sqlalchemy.orm import sessionmaker
-from schemas import UserCreate, UserLogin, Comment, CommentBase, CommentCreate, CommentResponse, CommentType, CommentUpdate
-# from utils import hash_password, verify_password
-# from auth import jwt_exception_handler
-
+from schemas import UserCreate, UserLogin, CommentBase, CommentCreate, CommentResponse, CommentType, CommentUpdate, UserResponse
 from models import Base, Comment, CommentType, User
 from fastapi_jwt import JwtAccessBearer, JwtAuthorizationCredentials
 from passlib.context import CryptContext
@@ -83,7 +72,41 @@ pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # Step 6: Create the FastAPI app
 # This is the main application object - it handles all incoming requests
 app = FastAPI(title="Comment API", description="A Comment CRUD API replacing the old TODO CRUD API")
-access_scheme = JwtAccessBearer(secret_key="Your_secret_key", auto_error=True)
+
+# Authentication for admin vs user access
+
+JWT_SECRET = os.getenv("JWT_SECRET")
+
+access_scheme = JwtAccessBearer(
+    secret_key=JWT_SECRET,
+    auto_error=True
+)
+
+async def get_current_user(
+    creds: JwtAuthorizationCredentials = Security(access_scheme),
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        user_id = UUID(creds.subject.get("user_id"))
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalars().first()
+
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    return user
+
+def require_role(roles: list[str]):
+    async def checker(user: User = Depends(get_current_user)):
+        if user.role not in roles:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        return user
+    return checker
+
+
 
 # Step 7: Create database tables on startup
 # This automatically creates all tables defined in your SQLAlchemy models
@@ -137,15 +160,22 @@ async def get_all_comments(db: AsyncSession = Depends(get_db)):
 # Step 10:
 # CREATE: Create a new comment
 @app.post("/comments", response_model=CommentResponse, status_code=201)
-async def create_comment(comment: CommentCreate, db: AsyncSession = Depends(get_db)):
+async def create_comment(
+    comment: CommentCreate,
+    user: User = Depends(require_role(["admin", "moderator"])),
+    db: AsyncSession = Depends(get_db),
+):
     """
     Create a new comment item.
 
     Returns: The created comment
     """
+    # only 'admin' or 'moderator' users can post
+
+    
     # Create a new comment object from the request data
     new_comment = Comment(
-        commenter=comment.commenter,
+        commenter=user.username,
         text=comment.text,
         comment_type=comment.comment_type,
     )
@@ -164,7 +194,10 @@ async def create_comment(comment: CommentCreate, db: AsyncSession = Depends(get_
 # UPDATE: Update an existing todo (PATCH - partial update)
 @app.patch("/comments/{comment_id}", response_model=CommentResponse)
 async def update_comment(
-    comment_id: int, data: CommentUpdate, db: AsyncSession = Depends(get_db)
+    comment_id: int,
+    data: CommentUpdate,
+    user: User = Depends(require_role(["admin"])),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Partially update an existing todo item (PATCH).
@@ -196,13 +229,17 @@ async def update_comment(
 # Step 12:
 # DELETE: Delete a comment
 @app.delete("/comments/{comment_id}", status_code=204)
-async def delete_comment(comment_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_comment(
+    comment_id: int,
+    user: User = Depends(require_role(["admin"])),
+    db: AsyncSession = Depends(get_db),
+    ):
     """
-    Delete a todo item.
+    Delete a comment.
 
     Returns: 204 No Content if successful, or a 404 error if not found
     """
-    # Get the existing todo
+    # Get the existing comment
     result = await db.execute(select(Comment).where(Comment.id == comment_id))
     db_comment = result.scalar_one_or_none()
 
@@ -241,40 +278,54 @@ if os.path.exists(static_dir):
             return FileResponse(index_path)
         raise HTTPException(status_code=404, detail="Frontend not found")
     
-# Register 
 
-@app.post("/register", response_model=UserCreate, status_code=201)
-async def register(u: UserCreate, db = Depends(get_db)):
+# Register endpoint
+@app.post("/register", response_model=UserResponse, status_code=201) # changed from UserCreate to UserResponse 2/22 for extra security (no return password to user)
+async def register(u: UserCreate, db: AsyncSession = Depends(get_db)):
     existing = await db.execute(select(User).where(User.username == u.username))
     if existing.scalars().first():
-        raise HTTPException(400, "User already exists")
-    user = User(username=u.username,
-                password=pwd.hash(u.password), email=u.email, first_name=u.first_name, last_name=u.last_name,)
+        raise HTTPException(status_code=400, detail="User already exists")
+
+    user = User(
+        username=u.username,
+        password=pwd.hash(u.password),
+        email=u.email,
+        first_name=u.first_name,
+        last_name=u.last_name,
+        role="user",
+    )
+
     db.add(user)
     await db.commit()
     await db.refresh(user)
-    
+
     return user
 
-
-# -------------------------------
-#             LOGIN
-# -------------------------------
+# Login endpoint
 @app.post("/login")
-# async def register(u: UserCreate, db = Depends(get_db)):
-async def login(u: UserLogin, response: Response, db = Depends(get_db)):
+async def login(u: UserLogin, db: AsyncSession = Depends(get_db)):
     res = await db.execute(select(User).where(User.username == u.username))
     user = res.scalars().first()
+
     if not user or not pwd.verify(u.password, user.password):
-        raise HTTPException(401, "Invalid credentials")
-    token = access_scheme.create_access_token(subject={"user_id": str(user.id)})
-    access_scheme.set_access_cookie(response, token)  # or return in body
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    token = access_scheme.create_access_token(
+        subject={"user_id": str(user.id),
+                 "role": user.role
+                 }
+    )
+
     return {"access_token": token}
 
-
+# Me endpoint
 @app.get("/me")
-def read_me(creds: JwtAuthorizationCredentials = Security(access_scheme)):
-    return {"user": creds["user_id"]}
+async def read_me(user: User = Depends(get_current_user)):
+    return {
+        "id": str(user.id),
+        "username": user.username,
+        "role": user.role,
+    }
 
 
 # Step 14: Run the server
