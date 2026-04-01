@@ -8,11 +8,9 @@ services:
       dockerfile: Dockerfile
     container_name: atms_db
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: atms_db
-    ports:
-      - "5434:5432"
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data_atms:/var/lib/postgresql/data
     healthcheck:
@@ -29,12 +27,13 @@ services:
       dockerfile: Dockerfile
     container_name: atms_backend
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://postgres:postgres@db:5432/atms_db}
+      DATABASE_URL: ${DATABASE_URL}
       # Added 2/19 #
       JWT_SECRET: ${JWT_SECRET}
 
     ports:
       - "8001:8000"
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
