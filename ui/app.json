@@ -9,7 +9,9 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "edu.unca.csci.ashevilleatmosphere"
+
     },
     "android": {
       "adaptiveIcon": {
