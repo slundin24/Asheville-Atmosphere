@@ -48,7 +48,8 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "2151cf28-ce05-4c5d-9ac2-1ba19963d348"
+        // "projectId": "2151cf28-ce05-4c5d-9ac2-1ba19963d348"
+        "projectId": "a532550c-7bf1-4f6c-a3b8-da4cdbaa9af3"
       }
     },
     "owner": "slundin"
