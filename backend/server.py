@@ -71,8 +71,11 @@ pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Step 6: Create the FastAPI app
 # This is the main application object - it handles all incoming requests
-app = FastAPI(title="Comment API", description="A Comment CRUD API replacing the old TODO CRUD API")
-
+app = FastAPI(
+    title="Comment API",
+    description="A Comment CRUD API replacing the old TODO CRUD API",
+    root_path="/api"
+)
 # Authentication for admin vs user access
 
 JWT_SECRET = os.getenv("JWT_SECRET")
